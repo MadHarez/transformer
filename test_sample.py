@@ -1,32 +1,48 @@
-# inference.py
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+测试使用高质量数据训练的翻译模型
+"""
 
 import os
 import torch
-from data_utils import sentences_to_ids, build_dict, load_data, PAD, DEVICE, BOS, EOS
+from data_utils import sentences_to_ids, build_dict, PAD, DEVICE, BOS, EOS
 from model import Transformer
 
-
-def load_model(model_path, en_total_words, cn_total_words):
+def load_model(model_path):
     """加载训练好的模型"""
-    model = Transformer(en_total_words, cn_total_words).to(DEVICE)
-    if os.path.exists(model_path):
-        print(f"加载模型: {model_path}")
-        checkpoint = torch.load(model_path, map_location=DEVICE)
-        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
-            model.load_state_dict(checkpoint['model_state_dict'])
-            epoch_info = checkpoint.get('epoch', 'Unknown')
-            best_loss = checkpoint.get('best_loss', float('inf'))
-            print(f"模型epoch: {epoch_info}")
-            if best_loss != float('inf'):
-                print(f"最佳验证损失: {best_loss:.4f}")
-        else:
-            model.load_state_dict(checkpoint)
-    else:
+    if not os.path.exists(model_path):
         print(f"警告: 模型文件 {model_path} 不存在")
-        return None
-    model.eval()
-    return model
-
+        return None, None, None
+    
+    print(f"加载模型: {model_path}")
+    checkpoint = torch.load(model_path, map_location=DEVICE)
+    
+    if not isinstance(checkpoint, dict) or 'model_state_dict' not in checkpoint:
+        print("模型文件格式不正确")
+        return None, None, None
+    
+    # 从checkpoint获取词汇表大小
+    en_total_words = checkpoint.get('en_total_words', 0)
+    cn_total_words = checkpoint.get('cn_total_words', 0)
+    
+    if en_total_words == 0 or cn_total_words == 0:
+        print("无法从checkpoint获取词汇表大小")
+        return None, None, None
+    
+    # 创建模型
+    model = Transformer(en_total_words, cn_total_words).to(DEVICE)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    
+    epoch_info = checkpoint.get('epoch', 'Unknown')
+    best_loss = checkpoint.get('best_loss', float('inf'))
+    print(f"模型epoch: {epoch_info}")
+    if best_loss != float('inf'):
+        print(f"最佳验证损失: {best_loss:.4f}")
+    
+    # 返回模型和字典
+    return model, checkpoint.get('en_dict'), checkpoint.get('cn_dict')
 
 def translate_sentence(model, sentence, en_dict, cn_index_dict, max_length=60):
     """翻译单个句子"""
@@ -70,44 +86,39 @@ def translate_sentence(model, sentence, en_dict, cn_index_dict, max_length=60):
         if idx in cn_index_dict:
             translated_words.append(cn_index_dict[idx])
 
-    return ' '.join(translated_words)
-
+    return ''.join(translated_words)
 
 def main():
-    # 加载字典和数据
-    project_root = os.path.dirname(os.path.abspath(__file__))
-    en_path = os.path.join(project_root, 'data', 'MDN_Web_Docs.en-zh_CN.en')
-    zh_path = os.path.join(project_root, 'data', 'MDN_Web_Docs.en-zh_CN.zh_CN')
-
-    en_sentences, cn_sentences = load_data(en_path, zh_path)
-    en_dict, en_total_words, en_index_dict = build_dict(en_sentences)
-    cn_dict, cn_total_words, cn_index_dict = build_dict(cn_sentences)
-
-    # 加载模型
-    best_model_path = os.path.join(project_root, 'best_model.pt')
-    model_path = os.path.join(project_root, 'model.pt')
+    print("测试高质量数据训练的翻译模型...")
     
-    model = None
-    if os.path.exists(best_model_path):
-        model = load_model(best_model_path, en_total_words, cn_total_words)
-    elif os.path.exists(model_path):
-        model = load_model(model_path, en_total_words, cn_total_words)
+    # 加载模型
+    project_root = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(project_root, 'best_sample_model.pt')
+    
+    model, en_dict, cn_dict = load_model(model_path)
     
     if model is None:
-        print("错误: 没有找到可用的模型文件")
+        print("模型加载失败")
         return
-
+    
+    # 创建反向字典
+    cn_index_dict = {v: k for k, v in cn_dict.items()}
+    
     print("模型加载成功！开始翻译测试...")
     print("-" * 50)
 
-    # 测试一些句子
+    # 测试一些训练数据中的句子
     test_sentences = [
-        "hello world",
-        "how are you",
-        "this is a test",
-        "good morning",
-        "thank you very much",
-        "what is your name"
+        "Hello, how are you today?",
+        "I love learning new languages.",
+        "The weather is very nice today.",
+        "Can you help me with this problem?",
+        "This book is very interesting.",
+        "We should protect the environment.",
+        "Technology has changed our lives.",
+        "Education is very important for children.",
+        "I want to travel around the world.",
+        "Music makes people feel happy."
     ]
 
     for i, sentence in enumerate(test_sentences, 1):
@@ -120,13 +131,12 @@ def main():
     print("-" * 50)
     print("进入交互式翻译模式（输入 'quit' 退出）")
     while True:
-        sentence = input("\n请输入英文句子: ").strip()
+        sentence = input("\\n请输入英文句子: ").strip()
         if sentence.lower() == 'quit':
             break
         if sentence:
             translation = translate_sentence(model, sentence, en_dict, cn_index_dict)
             print(f"翻译结果: {translation}")
-
 
 if __name__ == "__main__":
     main()

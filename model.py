@@ -1,4 +1,4 @@
-﻿import torch
+import torch
 import math
 import copy
 import torch.nn.functional as F  # 新增：修复 'F' 未解析
@@ -7,7 +7,7 @@ from torch import nn
 from data_utils import DEVICE
 
 # 超参数（可调整）
-LAYERS = 6  # 层数
+LAYERS = 8  # 层数（增加）
 D_MODEL = 512  # 嵌入维度
 D_FF = 2048  # FFN 维度
 H_NUM = 8  # 多头注意力头数
